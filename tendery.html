@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ТендерБот — поиск тендеров</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; }
+        .container { max-width: 1100px; margin: 0 auto; padding: 40px 20px; }
+        
+        .header { text-align: center; margin-bottom: 40px; }
+        .logo { font-size: 32px; font-weight: 800; color: #2563eb; margin-bottom: 8px; }
+        .logo span { background: #2563eb; color: white; padding: 4px 12px; border-radius: 8px; margin-right: 8px; }
+        .subtitle { color: #64748b; font-size: 18px; }
+        
+        .search-box { background: white; border-radius: 16px; padding: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 32px; }
+        .search-row { display: flex; gap: 12px; }
+        .search-input { flex: 1; padding: 16px 20px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; outline: none; transition: border-color 0.2s; }
+        .search-input:focus { border-color: #2563eb; }
+        .search-btn { padding: 16px 32px; background: #2563eb; color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: background 0.2s; }
+        .search-btn:hover { background: #1d4ed8; }
+        .search-btn:disabled { background: #94a3b8; cursor: not-allowed; }
+        .hint { margin-top: 12px; color: #94a3b8; font-size: 14px; }
+        
+        .results { display: none; }
+        .results.active { display: block; }
+        .results-header { background: #eff6ff; border-radius: 12px; padding: 16px 24px; margin-bottom: 20px; color: #1e40af; font-weight: 500; }
+        .results-actions { display: flex; gap: 12px; margin-bottom: 20px; }
+        .btn-secondary { padding: 10px 20px; background: white; border: 2px solid #e2e8f0; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .btn-secondary:hover { border-color: #2563eb; color: #2563eb; }
+        
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        th { background: #f1f5f9; padding: 14px 16px; text-align: left; font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 14px 16px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f8fafc; }
+        .link { color: #2563eb; text-decoration: none; font-weight: 500; }
+        .link:hover { text-decoration: underline; }
+        .detail-btn { padding: 6px 14px; background: #eff6ff; color: #2563eb; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; }
+        .detail-btn:hover { background: #dbeafe; }
+        
+        .loading { display: none; text-align: center; padding: 40px; }
+        .loading.active { display: block; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 100; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; border-radius: 16px; padding: 32px; max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal-close { float: right; background: none; border: none; font-size: 24px; cursor: pointer; color: #64748b; }
+        .modal-title { font-size: 20px; font-weight: 700; margin-bottom: 16px; }
+        .modal-row { margin-bottom: 12px; }
+        .modal-label { font-weight: 600; color: #64748b; font-size: 13px; }
+        .modal-value { margin-top: 2px; }
+        
+        .disclaimer { margin-top: 40px; text-align: center; color: #94a3b8; font-size: 12px; }
+        
+        @media (max-width: 768px) {
+            .search-row { flex-direction: column; }
+            table { font-size: 12px; }
+            th, td { padding: 10px 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Шапка -->
+        <div class="header">
+            <div class="logo"><span>🔍</span>ТендерБот</div>
+            <div class="subtitle">Найдите идеальный тендер за 30 секунд</div>
+        </div>
+        
+        <!-- Поиск -->
+        <div class="search-box" id="searchBox">
+            <div class="search-row">
+                <input type="text" class="search-input" id="searchInput" placeholder="Например: поставка оргтехники, Москва, до 1 млн рублей">
+                <button class="search-btn" id="searchBtn" onclick="searchTenders()">🔍 Найти тендеры</button>
+            </div>
+            <div class="hint">Укажите предмет закупки, регион и максимальную цену</div>
+        </div>
+        
+        <!-- Загрузка -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Ищем тендеры...</div>
+        </div>
+        
+        <!-- Результаты -->
+        <div class="results" id="results">
+            <div class="results-header" id="resultsQuery"></div>
+            <div class="results-actions">
+                <button class="btn-secondary" onclick="downloadExcel()">📥 Скачать Excel</button>
+                <button class="btn-secondary" onclick="resetSearch()">🔄 Новый поиск</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Номер закупки</th>
+                        <th>Заказчик</th>
+                        <th>Предмет</th>
+                        <th>НМЦК (₽)</th>
+                        <th>Дедлайн</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTable"></tbody>
+            </table>
+        </div>
+        
+        <!-- Дисклеймер -->
+        <div class="disclaimer">
+            ⚠️ Данные носят ознакомительный характер. Проверяйте информацию на официальных площадках (zakupki.gov.ru).
+        </div>
+    </div>
+    
+    <!-- Модальное окно -->
+    <div class="modal" id="modal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closeModal()">✕</button>
+            <div class="modal-title" id="modalTitle"></div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+    
+    <script>
+        // База тестовых тендеров
+        const tendersDB = [
+            { id: '0373100065224000045', customer: 'ФГБУ "Центр реабилитации"', subject: 'Поставка оргтехники (ноутбуки, МФУ)', price: 1250000, deadline: '2025-05-20', region: 'Москва', requirements: 'Обеспечение заявки 1%. Товар российского производства.' },
+            { id: '0173100001524000123', customer: 'Управа района Сокольники', subject: 'Поставка офисной мебели', price: 890000, deadline: '2025-05-18', region: 'Москва', requirements: 'Сборка и установка включены в стоимость.' },
+            { id: '0348100009724000089', customer: 'ГБУЗ МО "Люберецкая больница"', subject: 'Поставка медицинской мебели (кушетки, шкафы)', price: 2100000, deadline: '2025-05-25', region: 'Московская область', requirements: 'Лицензия на производство медтехники. Обеспечение 5%.' },
+            { id: '0372200006024000034', customer: 'Школа № 1568', subject: 'Поставка учебной мебели (парты, стулья)', price: 1450000, deadline: '2025-06-01', region: 'Москва', requirements: 'Соответствие ГОСТ 22046-2016. Сертификаты на материалы.' },
+            { id: '0195400000224000156', customer: 'Администрация г. Краснодар', subject: 'Поставка уличной мебели для парков', price: 3200000, deadline: '2025-05-30', region: 'Краснодар', requirements: 'Антивандальное исполнение. Гарантия 5 лет.' },
+            { id: '0373100065224000078', customer: 'МФЦ района Хамовники', subject: 'Поставка оргтехники и расходных материалов', price: 780000, deadline: '2025-05-15', region: 'Москва', requirements: 'Поставка в течение 5 рабочих дней.' },
+            { id: '0173100001524000456', customer: 'Префектура ЦАО г. Москвы', subject: 'Капитальный ремонт помещений', price: 8500000, deadline: '2025-06-10', region: 'Москва', requirements: 'Допуск СРО. Опыт аналогичных работ от 3 лет.' },
+            { id: '0348100009724000234', customer: 'ГБУ "Жилищник Таганского района"', subject: 'Поставка строительных материалов', price: 1650000, deadline: '2025-05-22', region: 'Москва', requirements: 'Сертификаты соответствия на все материалы.' },
+            { id: '0372200006024000091', customer: 'Детский сад № 234', subject: 'Поставка мягкого инвентаря (постельное белье)', price: 450000, deadline: '2025-05-19', region: 'Санкт-Петербург', requirements: 'Сертификаты для детских учреждений.' },
+            { id: '0195400000224000789', customer: 'Министерство образования Кубани', subject: 'Поставка компьютерного оборудования', price: 5400000, deadline: '2025-06-05', region: 'Краснодар', requirements: 'Отечественное ПО предустановлено. Гарантия 3 года.' },
+            { id: '0373100065224000123', customer: 'Поликлиника № 45', subject: 'Поставка медицинских расходных материалов', price: 980000, deadline: '2025-05-28', region: 'Москва', requirements: 'Регистрационные удостоверения Росздравнадзора.' },
+            { id: '0173100001524000890', customer: 'ГБУК "Московский зоопарк"', subject: 'Поставка кормов для животных', price: 3200000, deadline: '2025-06-02', region: 'Москва', requirements: 'Ветеринарные свидетельства. Дробная поставка по графику.' },
+        ];
+        
+        // Извлечение параметров из запроса
+        function parseQuery(query) {
+            const lower = query.toLowerCase();
+            let subject = 'не указан';
+            let region = 'все регионы';
+            let maxPrice = 'не ограничена';
+            
+            // Ищем ключевые слова предмета
+            const subjects = ['оргтехник', 'компьютер', 'ноутбук', 'мебел', 'строй', 'ремонт', 'медицин', 'продукт', 'корм', 'белье', 'инвентар', 'расходн'];
+            for (const s of subjects) {
+                if (lower.includes(s)) { subject = s + '...'; break; }
+            }
+            
+            // Ищем регион
+            const regions = ['москв', 'подмосков', 'люберцы', 'химки', 'краснодар', 'кубан', 'питер', 'санкт-петербург', 'казан', 'новосибир'];
+            for (const r of regions) {
+                if (lower.includes(r)) { region = r.charAt(0).toUpperCase() + r.slice(1) + '...'; break; }
+            }
+            
+            // Ищем цену
+            const priceMatch = lower.match(/до\s*(\d+[\s\d]*)\s*(млн|тыс|миллион|тысяч|руб|₽|р)/i);
+            if (priceMatch) {
+                let num = priceMatch[1].replace(/\s/g, '');
+                let unit = priceMatch[2].toLowerCase();
+                if (unit.startsWith('млн') || unit.startsWith('милл')) maxPrice = (parseInt(num) * 1000000).toLocaleString() + ' ₽';
+                else if (unit.startsWith('тыс') || unit.startsWith('тысяч')) maxPrice = (parseInt(num) * 1000).toLocaleString() + ' ₽';
+                else maxPrice = parseInt(num).toLocaleString() + ' ₽';
+            }
+            
+            return { subject, region, maxPrice };
+        }
+        
+        // Поиск тендеров
+        function searchTenders() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) { alert('Пожалуйста, введите запрос для поиска'); return; }
+            
+            // Показываем загрузку
+            document.getElementById('searchBox').style.display = 'none';
+            document.getElementById('loading').classList.add('active');
+            document.getElementById('results').classList.remove('active');
+            document.getElementById('searchBtn').disabled = true;
+            
+            // Имитация загрузки (2 секунды)
+            setTimeout(() => {
+                const params = parseQuery(query);
+                
+                // Фильтруем тендеры по запросу
+                let filtered = tendersDB.filter(t => {
+                    const lowerQ = query.toLowerCase();
+                    const matchSubject = lowerQ.split(/[,;]/)[0].trim(); // первая часть запроса — предмет
+                    return t.subject.toLowerCase().includes(matchSubject.substring(0, 4)) ||
+                           t.customer.toLowerCase().includes(matchSubject.substring(0, 4)) ||
+                           t.region.toLowerCase().includes(matchSubject.substring(0, 4)) ||
+                           Math.random() < 0.3; // немного случайных для правдоподобности
+                });
+                
+                if (filtered.length === 0) filtered = tendersDB.slice(0, 5); // если ничего не нашли — показываем популярные
+                if (filtered.length > 7) filtered = filtered.slice(0, 7);
+                
+                // Отображаем результаты
+                document.getElementById('resultsQuery').textContent = 
+                    `🔎 Ищем: ${params.subject} | Регион: ${params.region} | Цена: ${params.maxPrice}`;
+                
+                const tbody = document.getElementById('resultsTable');
+                tbody.innerHTML = filtered.map(t => `
+                    <tr>
+                        <td><a href="https://zakupki.gov.ru/epz/order/notice/ea44/view/common-info.html?regNumber=${t.id}" target="_blank" class="link">${t.id}</a></td>
+                        <td>${t.customer}</td>
+                        <td>${t.subject}</td>
+                        <td>${t.price.toLocaleString()}</td>
+                        <td>${t.deadline}</td>
+                        <td><button class="detail-btn" onclick="showDetail('${t.id}')">Подробнее</button></td>
+                    </tr>
+                `).join('');
+                
+                document.getElementById('loading').classList.remove('active');
+                document.getElementById('results').classList.add('active');
+                document.getElementById('searchBtn').disabled = false;
+            }, 2000);
+        }
+        
+        // Показать детали тендера
+        function showDetail(id) {
+            const tender = tendersDB.find(t => t.id === id);
+            if (!tender) return;
+            
+            document.getElementById('modalTitle').textContent = `Закупка № ${tender.id}`;
+            document.getElementById('modalBody').innerHTML = `
+                <div class="modal-row"><div class="modal-label">Заказчик</div><div class="modal-value">${tender.customer}</div></div>
+                <div class="modal-row"><div class="modal-label">Предмет закупки</div><div class="modal-value">${tender.subject}</div></div>
+                <div class="modal-row"><div class="modal-label">Начальная цена</div><div class="modal-value">${tender.price.toLocaleString()} ₽</div></div>
+                <div class="modal-row"><div class="modal-label">Дата окончания подачи</div><div class="modal-value">${tender.deadline}</div></div>
+                <div class="modal-row"><div class="modal-label">Регион</div><div class="modal-value">${tender.region}</div></div>
+                <div class="modal-row"><div class="modal-label">Особые требования</div><div class="modal-value">${tender.requirements}</div></div>
+                <div class="modal-row"><div class="modal-label">Ссылка</div><div class="modal-value"><a href="https://zakupki.gov.ru/epz/order/notice/ea44/view/common-info.html?regNumber=${tender.id}" target="_blank" class="link">Открыть на zakupki.gov.ru</a></div></div>
+            `;
+            document.getElementById('modal').classList.add('active');
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+        
+        // Скачать Excel (имитация)
+        function downloadExcel() {
+            alert('📥 Файл "rezultaty_poiska.xlsx" сформирован.\n\n(В полной версии здесь будет скачиваться реальный файл с результатами поиска)');
+        }
+        
+        // Сброс поиска
+        function resetSearch() {
+            document.getElementById('results').classList.remove('active');
+            document.getElementById('searchBox').style.display = 'block';
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchBtn').disabled = false;
+        }
+        
+        // Закрытие модального окна по клику вне его
+        document.getElementById('modal').addEventListener('click', function(e) {
+            if (e.target === this) closeModal();
+        });
+        
+        // Поиск по Enter
+        document.getElementById('searchInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') searchTenders();
+        });
+    </script>
+</body>
+</html>
